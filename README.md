@@ -13,3 +13,9 @@ g++ -i main.cc -l rtmp -o infinite_push
 运行/Run
 ==================
 ./infinite_push -i ~/whatever.flv -o rtmp://xxx.xxx.xxx.xxx/live/test
+
+测试/Test
+==================
+已测试，运行良好:
+* crtmpserver-1.1_beta
+* nginx-rtmp-module-1.1.4
