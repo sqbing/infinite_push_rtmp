@@ -5,12 +5,13 @@
  * @version 0.0.1
  * @date 2014-08-28
  */
-#include <iostream>
 
 extern "C"{
 #include <librtmp/rtmp.h>
 #include <librtmp/log.h>
 }
+#include <iostream>
+#include <vector>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <string.h>
@@ -23,7 +24,10 @@ struct GlobalContext{
     FILE *fp;
     char *url;
     char *flvfile;
+    std::vector<std::string>    flvfiles;
+    size_t                      nflvfiles;
     uint32_t timestamp_delta;
+    bool loop;
 
     GlobalContext(){
         rtmp = NULL;
@@ -32,6 +36,9 @@ struct GlobalContext{
         flvfile = NULL;
         fp = NULL;
         timestamp_delta = 0;
+        flvfiles.clear();
+        nflvfiles = 0;
+        loop = 0;
     }
     ~GlobalContext(){
         if(rtmp)
@@ -100,8 +107,9 @@ bool ReadTime(uint32_t &time, FILE *fp){
 void print_help(){
     std::cout<<"Commands:"<<std::endl;
     std::cout<<"    -h  print help information"<<std::endl;
-    std::cout<<"    -i  input flv file"<<std::endl;
+    std::cout<<"    -i  input flv file(s), splited by comma"<<std::endl;
     std::cout<<"    -o  output rtmp url"<<std::endl;
+    std::cout<<"    -l  loop files";
 }
 
 int exit_program = 0;
@@ -171,14 +179,63 @@ int open_file(GlobalContext &ctx){
         fclose(ctx.fp);
         ctx.fp = NULL;
     }
-    // 打开flv文件
-    ctx.fp = fopen(ctx.flvfile, "rb");
-    if(!ctx.fp){
-        std::cout<<"Failed to open flv file "<<ctx.flvfile<<std::endl;
-        return -1;
+    std::string file_path;
+    if(ctx.flvfiles.size()){
+        while(1){
+            if(ctx.nflvfiles >= ctx.flvfiles.size()){
+                if(ctx.loop){
+                    ctx.nflvfiles = 0;
+                    continue;
+                }
+                return -1;
+            }
+            file_path = ctx.flvfiles[ctx.nflvfiles];
+            ctx.nflvfiles++;
+            // 打开flv文件
+            ctx.fp = fopen(file_path.c_str(), "rb");
+            if(!ctx.fp){
+                std::cout<<"Failed to open flv file "<<file_path<<std::endl;
+                continue;
+            }
+            std::cout<<"Succeeded to open flv file "<<file_path<<std::endl;
+            return 0;
+        }
     }
-    std::cout<<"Succeeded to open flv file "<<ctx.flvfile<<std::endl;
-    return 0;
+    else {
+        file_path = ctx.flvfile;
+        // 打开flv文件
+        ctx.fp = fopen(file_path.c_str(), "rb");
+        if(!ctx.fp){
+            std::cout<<"Failed to open flv file "<<file_path<<std::endl;
+            return -1;
+        }
+        std::cout<<"Succeeded to open flv file "<<file_path<<std::endl;
+        return 0;
+    }
+}
+void parse_multi_files(GlobalContext &ctx){
+    std::string flvfile = ctx.flvfile;
+    ctx.flvfiles.clear();
+    size_t pos = 0;
+    while(1){
+        size_t p = flvfile.find(',', pos);
+        if(p == std::string::npos){
+            if(pos != flvfile.size()){
+                std::string file_path = flvfile.substr(pos, p);
+                std::cout<<"Input file #"<<ctx.flvfiles.size()<<": "<<file_path<<std::endl;
+                ctx.flvfiles.push_back(file_path);
+            }
+            break;
+        }
+        if(pos == p){
+            pos = p+1;
+            continue;
+        }
+        std::string file_path = flvfile.substr(pos, p-pos);
+        std::cout<<"Input file #"<<ctx.flvfiles.size()<<": "<<file_path<<std::endl;
+        ctx.flvfiles.push_back(file_path);
+        pos = p+1;
+    }
 }
 
 int main(int argc, char *argv[])
@@ -188,7 +245,7 @@ int main(int argc, char *argv[])
     // 解析输入参数
     int opt;
     memset(&ctx, 0, sizeof(ctx));
-    while((opt = getopt(argc, argv, "hi:o:")) != -1){
+    while((opt = getopt(argc, argv, "hi:o:l")) != -1){
         switch(opt){
             case 'i':
                 ctx.flvfile = optarg;
@@ -199,6 +256,9 @@ int main(int argc, char *argv[])
             case 'h':
                 print_help();
                 return 0;
+            case 'l':
+                ctx.loop = 1;
+                break;
             default:
                 break;
         }
@@ -207,6 +267,9 @@ int main(int argc, char *argv[])
         std::cout<<"Input flv file not found."<<std::endl;
         print_help();
         return -1;
+    }
+    if(std::string(ctx.flvfile).find(',') != std::string::npos){
+        parse_multi_files(ctx);
     }
     if(!ctx.url){
         std::cout<<"Output RTMP url not found."<<std::endl;
@@ -224,17 +287,17 @@ int main(int argc, char *argv[])
     RTMP_LogSetLevel(RTMP_LOGINFO);
     std::cout<<"Setting librtmp log level."<<std::endl;
 
-    // 打开文件
-    if(open_file(ctx)){
-        return -1;
-    }
-
     // 起始时间
     time_t start = time(0);
     // 上一帧时间戳
     uint32_t stream_timestamp = 0;
 
     while(!exit_program){
+        // 打开文件
+        if(open_file(ctx)){
+            return -1;
+        }
+
         // 连接rtmp服务端
         if(!ctx.rtmp || (ctx.rtmp && !RTMP_IsConnected(ctx.rtmp))){
             if(connect_remote(ctx)){
