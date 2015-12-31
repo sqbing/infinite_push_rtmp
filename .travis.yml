@@ -2,7 +2,7 @@ language: c
 before_install:
   - wget https://rtmpdump.mplayerhq.hu/download/rtmpdump-2.3.tgz -O /tmp/rtmpdump-2.3.tgz
   - tar -xvf /tmp/rtmpdump-2.3.tgz
-  - cd rtmpdump-2.3 make && sudo make install
+  - cd rtmpdump-2.3 && make && sudo make install && cd -
   - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
 
 install: true
