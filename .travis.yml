@@ -6,4 +6,4 @@ before_install:
   - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
 
 install: true
-script: gcc main.cc -lrtmp -o infinite_push
+script: g++ main.cc -lrtmp -o infinite_push
